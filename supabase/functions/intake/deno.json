@@ -1,0 +1,16 @@
+{
+  "imports": {
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.116.0"
+  },
+  "compilerOptions": {
+    "strict": true
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "semiColons": true
+  },
+  "tasks": {
+    "test": "deno test intake_test.ts",
+    "check": "deno check index.ts intake_test.ts"
+  }
+}

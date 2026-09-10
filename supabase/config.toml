@@ -1,7 +1,11 @@
 project_id = "orstudioprint"
 
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
 [functions.intake]
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/intake/index.ts"
-
