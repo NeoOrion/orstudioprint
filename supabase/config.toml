@@ -1,0 +1,7 @@
+project_id = "orstudioprint"
+
+[functions.intake]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/intake/index.ts"
+

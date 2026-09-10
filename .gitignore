@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Supabase local state and generated artifacts
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+supabase/functions/.env
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Editors, operating systems, and temporary files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+
