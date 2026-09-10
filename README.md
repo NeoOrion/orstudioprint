@@ -81,11 +81,15 @@ upsert.
 ```
 
 Use `"action": "resume"` with the same credentials to obtain fresh upload
-authorizations only for missing files. Both actions return operational IDs and
-status only, never project PII. `finalize` verifies every expected object in
-Storage and compares sizes when Storage reports them. It changes the project to
-`SUBMITTED` only after the upload is complete. Closed projects are handled
-idempotently, and pending projects cannot be resumed after retention expires.
+authorizations for missing files. When an expected object has the wrong size,
+`resume` deletes only that manifest-registered path server-side, confirms its
+absence, resets the entry to `PENDING`, and signs the same path again without
+upsert. The frontend receives no delete capability. Both actions return
+operational IDs and status only, never project PII. `finalize` verifies every
+expected object in Storage and compares sizes when Storage reports them. It
+changes the project to `SUBMITTED` only after the upload is complete. Closed
+projects are handled idempotently, and pending projects cannot be resumed after
+retention expires.
 
 ## Local commands
 

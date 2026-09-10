@@ -10,7 +10,7 @@
     "semiColons": true
   },
   "tasks": {
-    "test": "deno test intake_test.ts",
-    "check": "deno check index.ts intake_test.ts"
+    "test": "deno test intake_test.ts actions_test.ts",
+    "check": "deno check index.ts intake_test.ts actions_test.ts"
   }
 }

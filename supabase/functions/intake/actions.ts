@@ -1,6 +1,6 @@
 import type { AdminClient } from "./runtime.ts";
 import { HttpError } from "./responses.ts";
-import { buildStorageManifest } from "./file_policy.ts";
+import { buildStorageManifest, buildStoragePath } from "./file_policy.ts";
 import { constantTimeHexEqual, generateSubmissionToken, hashSubmissionToken } from "./token.ts";
 import type {
   AuthorizedProjectRequest,
@@ -11,6 +11,7 @@ import type {
 
 const BUCKET = "quote-files";
 const TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ProjectRow {
   id: string;
@@ -272,7 +273,9 @@ async function inspectStorage(
     const stored = storedByName.get(expectedName);
     if (!stored) {
       missing.push(file.file_uuid);
-      return { ...file, upload_status: "PENDING" as const };
+      const pending = { ...file, upload_status: "PENDING" as const };
+      delete pending.observed_size_bytes;
+      return pending;
     }
 
     const rawSize = stored.metadata?.size;
@@ -297,6 +300,57 @@ async function inspectStorage(
   });
 
   return { manifest: updatedManifest, missing, sizeMismatches };
+}
+
+async function deleteSizeMismatches(
+  project: ProjectRow,
+  inspection: StorageInspection,
+  admin: AdminClient,
+): Promise<void> {
+  const mismatchedFileUuids = new Set(
+    inspection.sizeMismatches.map((mismatch) => mismatch.file_uuid),
+  );
+  const deletionEntries = inspection.manifest.filter((file) =>
+    mismatchedFileUuids.has(file.file_uuid)
+  );
+
+  if (deletionEntries.length !== mismatchedFileUuids.size) {
+    throw new HttpError(503, "SERVICE_UNAVAILABLE", "Intake service is unavailable.");
+  }
+  for (const file of deletionEntries) {
+    if (!UUID_PATTERN.test(file.file_uuid)) {
+      throw new HttpError(503, "SERVICE_UNAVAILABLE", "Intake service is unavailable.");
+    }
+    let canonicalPath: string;
+    try {
+      canonicalPath = buildStoragePath(project.id, file.file_uuid, file.extension);
+    } catch {
+      throw new HttpError(503, "SERVICE_UNAVAILABLE", "Intake service is unavailable.");
+    }
+    if (file.storage_path !== canonicalPath) {
+      console.error("Refused non-canonical manifest deletion", {
+        project_id: project.id,
+        file_uuid: file.file_uuid,
+      });
+      throw new HttpError(503, "SERVICE_UNAVAILABLE", "Intake service is unavailable.");
+    }
+  }
+
+  const fileUuids = deletionEntries.map((file) => file.file_uuid);
+  const paths = deletionEntries.map((file) => file.storage_path);
+  const { error } = await admin.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.error("Mismatched object deletion failed", {
+      project_id: project.id,
+      file_uuids: fileUuids,
+    });
+    throw new HttpError(
+      409,
+      "SIZE_MISMATCH_DELETE_FAILED",
+      "Incorrect files could not be prepared for another upload.",
+      { file_uuids: fileUuids, recoverable: true },
+    );
+  }
 }
 
 async function saveManifest(
@@ -386,8 +440,31 @@ export async function handleResume(
   }
   assertWithinRetention(project);
 
-  const inspection = await inspectStorage(project, admin);
+  let inspection = await inspectStorage(project, admin);
   await saveManifest(project, inspection.manifest, admin);
+  const recoveredSizeMismatchFileUuids = inspection.sizeMismatches.map((mismatch) =>
+    mismatch.file_uuid
+  );
+  if (recoveredSizeMismatchFileUuids.length > 0) {
+    await deleteSizeMismatches(project, inspection, admin);
+    inspection = await inspectStorage(project, admin);
+    const stillPresent = recoveredSizeMismatchFileUuids.filter((fileUuid) =>
+      !inspection.missing.includes(fileUuid)
+    );
+    if (stillPresent.length > 0) {
+      console.error("Mismatched object deletion could not be confirmed", {
+        project_id: project.id,
+        file_uuids: stillPresent,
+      });
+      throw new HttpError(
+        409,
+        "SIZE_MISMATCH_DELETE_FAILED",
+        "Incorrect files could not be prepared for another upload.",
+        { file_uuids: stillPresent, recoverable: true },
+      );
+    }
+    await saveManifest(project, inspection.manifest, admin);
+  }
   const missingEntries = inspection.manifest.filter((file) =>
     inspection.missing.includes(file.file_uuid)
   );
@@ -400,6 +477,7 @@ export async function handleResume(
       status: project.status,
       missing_file_uuids: inspection.missing,
       size_mismatches: inspection.sizeMismatches,
+      recovered_size_mismatch_file_uuids: recoveredSizeMismatchFileUuids,
       uploads: uploadResult.authorizations,
       upload_authorization_incomplete: uploadResult.failedFileUuids.length > 0,
       ...(uploadResult.failedFileUuids.length > 0
