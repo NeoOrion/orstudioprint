@@ -14,8 +14,11 @@ supabase/functions/.env
 
 # Dependencies and build output
 node_modules/
+.next/
+out/
 dist/
 coverage/
+*.tsbuildinfo
 
 # Editors, operating systems, and temporary files
 .idea/
@@ -25,4 +28,3 @@ Thumbs.db
 *.log
 *.tmp
 *.swp
-
