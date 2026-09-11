@@ -357,8 +357,9 @@ export function IntakeForm() {
             <ul>{expectedFiles.map((file) => <li key={file.file_uuid}>{file.original_name} · {(file.declared_size_bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB</li>)}</ul>
             <label>Adicionar arquivos
               <input type="file" multiple accept=".stl,.3mf,.obj,.step,.stp" disabled={requestActive} onChange={(event) => {
-                setRecoveryFiles((current) => [...current, ...Array.from(event.target.files ?? [])]);
+                const selectedFiles = Array.from(event.currentTarget.files ?? []);
                 event.currentTarget.value = "";
+                setRecoveryFiles((current) => [...current, ...selectedFiles]);
               }} />
             </label>
             <ul>{recoveryFiles.map((file, index) => <li key={`${file.name}-${file.size}-${index}`}>{file.name} · {(file.size / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB <button type="button" className="button-secondary" onClick={() => setRecoveryFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button></li>)}</ul>
