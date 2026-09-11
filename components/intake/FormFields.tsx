@@ -1,4 +1,5 @@
 import type { ExposureFactor, IntakeFormValues } from "@/lib/intake/types";
+import { formatFileSize, removeFileAt } from "@/lib/intake/validation";
 
 const EXPOSURE_OPTIONS: Array<{ value: ExposureFactor; label: string }> = [
   { value: "HEAT", label: "Calor" },
@@ -272,21 +273,34 @@ export function FormFields({
 
         {values.fileDeliveryMode === "UPLOAD" ? (
           <label>
-            Arquivos <span aria-hidden="true">*</span>
+            Adicionar arquivos <span aria-hidden="true">*</span>
             <input
               key="upload-files"
               required
               type="file"
               multiple
               accept=".stl,.3mf,.obj,.step,.stp"
-              onChange={(event) => onFiles(Array.from(event.target.files ?? []))}
+              onChange={(event) => {
+                onFiles([...files, ...Array.from(event.target.files ?? [])]);
+                event.currentTarget.value = "";
+              }}
               disabled={disabled}
             />
             <span className="field-help">Até 5 arquivos · 50 MB no total</span>
             {files.length > 0 ? (
-              <span className="file-summary">
-                {files.length} {files.length === 1 ? "arquivo selecionado" : "arquivos selecionados"}
-              </span>
+              <div className="file-summary">
+                <p>{files.length} {files.length === 1 ? "arquivo selecionado" : "arquivos selecionados"}</p>
+                <ul>
+                  {files.map((file, index) => (
+                    <li key={`${file.name}-${file.size}-${index}`}>
+                      <span>{file.name} · {formatFileSize(file.size)}</span>
+                      <button type="button" className="button-secondary" onClick={() => onFiles(removeFileAt(files, index))} disabled={disabled}>
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </label>
         ) : (

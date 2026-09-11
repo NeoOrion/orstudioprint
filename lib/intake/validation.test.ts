@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { buildCreateRequest } from "./api";
 import type { IntakeFormValues } from "./types";
 import {
+  appendFiles,
   canStartCreate,
   extractAttribution,
   fileDescriptors,
   mapFormToProjectPayload,
+  removeFileAt,
   MAX_FILE_SIZE_BYTES,
   validateExposureFactors,
   validateFiles,
@@ -59,8 +61,8 @@ describe("file policy", () => {
     expect(validateFiles(
       Array.from({ length: 6 }, (_, index) => ({ name: `${index}.stl`, size: 1 })),
     )).toContain("Selecione no máximo 5 arquivos.");
-    expect(validateFiles([{ name: "large.step", size: MAX_FILE_SIZE_BYTES + 1 }])[0])
-      .toContain("limite técnico");
+    expect(validateFiles([{ name: "large.step", size: MAX_FILE_SIZE_BYTES + 1 }]))
+      .toEqual(["Os arquivos excedem 50 MB no total. Use um link compartilhado."]);
   });
 });
 
@@ -150,4 +152,17 @@ describe("client create guard", () => {
     expect(canStartCreate(true, false)).toBe(false);
     expect(canStartCreate(false, true)).toBe(false);
   });
+
+describe("additive file selection", () => {
+  it("appends selections and removes an individual file", () => {
+    const first = { name: "one.stl", size: 10 };
+    const second = { name: "two.obj", size: 20 };
+    expect(appendFiles([first], [second])).toEqual([first, second]);
+    expect(removeFileAt([first, second], 0)).toEqual([second]);
+  });
+  it("keeps the combined size validation after additive selection", () => {
+    const selected = appendFiles([{ name: "one.stl", size: 30_000_000 }], [{ name: "two.obj", size: 20_000_001 }]);
+    expect(validateFiles(selected)).toEqual(["Os arquivos excedem 50 MB no total. Use um link compartilhado."]);
+  });
+});
 });

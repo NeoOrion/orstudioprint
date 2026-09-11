@@ -109,8 +109,12 @@ export function IntakeForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [successReference, setSuccessReference] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingIntakeSession | null>(null);
+  const [recoveryMissingFileUuids, setRecoveryMissingFileUuids] = useState<string[] | null>(null);
+  const [recoveryAuthorizations, setRecoveryAuthorizations] = useState<UploadAuthorization[]>([]);
+  const [recoveryFiles, setRecoveryFiles] = useState<File[]>([]);
   const sessionIdRef = useRef("");
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
+  const errorSummaryRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -127,6 +131,13 @@ export function IntakeForm() {
   }, []);
 
   const requestActive = ["VALIDATING", "CREATING", "UPLOADING", "FINALIZING"].includes(phase);
+
+  useEffect(() => {
+    if (errors.length > 0) {
+      errorSummaryRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorSummaryRef.current?.focus();
+    }
+  }, [errors]);
 
   const onField = useCallback((name: keyof IntakeFormValues, value: string | boolean) => {
     setValues((current) => ({ ...current, [name]: value }));
@@ -253,35 +264,44 @@ export function IntakeForm() {
     if (!pending || requestActive) return;
     setErrors([]);
     setNotice(null);
-    if (pending.files.length === 0) {
-      setPhase("RECOVERABLE_ERROR");
-      setNotice(
-        "A criação não devolveu o mapeamento completo. Preserve esta aba e tente novamente mais tarde.",
-      );
-      return;
-    }
-    const fileMapping = matchPendingFiles(pending.files, files);
-    if (!fileMapping) {
-      setPhase("PENDING");
-      setNotice("Selecione novamente todos os arquivos com os mesmos nomes e tamanhos.");
-      return;
-    }
-
     try {
-      setPhase("FINALIZING");
-      setProgress("Verificando o envio pendente…");
-      const resumed = await resumeIntake(pending.project_id, pending.submission_token);
-      if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
-        finishSuccessfully(resumed.project_reference);
+      if (recoveryMissingFileUuids === null) {
+        setPhase("FINALIZING");
+        setProgress("Verificando o envio pendente…");
+        const resumed = await resumeIntake(pending.project_id, pending.submission_token);
+        if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
+          finishSuccessfully(resumed.project_reference);
+          return;
+        }
+        const missingFileUuids = resumed.missing_file_uuids ?? [];
+        if (missingFileUuids.length === 0) {
+          const finalized = await finalizeIntake(pending.project_id, pending.submission_token);
+          if (finalized.status !== "SUBMITTED" && !finalized.already_finalized) {
+            throw new Error("FINALIZE_INCOMPLETE");
+          }
+          finishSuccessfully(finalized.project_reference);
+          return;
+        }
+        const authorizations = resumed.uploads ?? [];
+        if (resumed.upload_authorization_incomplete ||
+          !authorizationsCoverExpectedFiles(authorizations, missingFileUuids)) {
+          throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
+        }
+        setRecoveryMissingFileUuids(missingFileUuids);
+        setRecoveryAuthorizations(authorizations);
+        setPhase("PENDING");
         return;
       }
-      const missingFileUuids = resumed.missing_file_uuids ?? [];
-      const resumedAuthorizations = resumed.uploads ?? [];
-      if (resumed.upload_authorization_incomplete ||
-        !authorizationsCoverExpectedFiles(resumedAuthorizations, missingFileUuids)) {
-        throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
+      const expected = pending.files.filter((file) =>
+        recoveryMissingFileUuids.includes(file.file_uuid)
+      );
+      const fileMapping = matchPendingFiles(expected, recoveryFiles);
+      if (!fileMapping) {
+        setPhase("PENDING");
+        setNotice("Adicione todos os arquivos solicitados com os mesmos nomes e tamanhos.");
+        return;
       }
-      await uploadAndFinalize(pending, resumedAuthorizations, fileMapping);
+      await uploadAndFinalize(pending, recoveryAuthorizations, fileMapping);
     } catch (error) {
       setPhase("RECOVERABLE_ERROR");
       setNotice(errorMessage(error));
@@ -290,6 +310,9 @@ export function IntakeForm() {
 
   function discardLocalSession() {
     clearPendingSession(window.sessionStorage);
+    setRecoveryMissingFileUuids(null);
+    setRecoveryAuthorizations([]);
+    setRecoveryFiles([]);
     setPending(null);
     setFiles([]);
     setNotice(null);
@@ -306,6 +329,42 @@ export function IntakeForm() {
         <p>
           Esta é uma solicitação de simulação de preço. Nenhum pedido ou cobrança foi criado.
         </p>
+      </section>
+    );
+  }
+
+  if (pending) {
+    const expectedFiles = recoveryMissingFileUuids === null ? [] : pending.files.filter((file) =>
+      recoveryMissingFileUuids.includes(file.file_uuid)
+    );
+    const matchingFiles = matchPendingFiles(expectedFiles, recoveryFiles);
+    return (
+      <section className="pending-panel" aria-labelledby="pending-title">
+        <p className="eyebrow">Envio pendente</p>
+        <h1 id="pending-title">Referência: {pending.project_reference}</h1>
+        <p>A solicitação já foi criada. Você não precisa preencher o formulário novamente.</p>
+        {recoveryMissingFileUuids !== null ? (
+          <>
+            <p>Precisamos reenviar:</p>
+            <ul>{expectedFiles.map((file) => <li key={file.file_uuid}>{file.original_name} · {(file.declared_size_bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB</li>)}</ul>
+            <label>Adicionar arquivos
+              <input type="file" multiple accept=".stl,.3mf,.obj,.step,.stp" disabled={requestActive} onChange={(event) => {
+                setRecoveryFiles((current) => [...current, ...Array.from(event.target.files ?? [])]);
+                event.currentTarget.value = "";
+              }} />
+            </label>
+            <ul>{recoveryFiles.map((file, index) => <li key={`${file.name}-${file.size}-${index}`}>{file.name} · {(file.size / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB <button type="button" className="button-secondary" onClick={() => setRecoveryFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Remover</button></li>)}</ul>
+            <p className="field-help">{matchingFiles ? "Todos os arquivos solicitados foram encontrados." : "Adicione todos os arquivos solicitados com os mesmos nomes e tamanhos."}</p>
+          </>
+        ) : null}
+        {notice ? <p className="notice-panel" role="alert">{notice}</p> : null}
+        <div className="button-row">
+          <button type="button" onClick={handleResume} disabled={requestActive || (recoveryMissingFileUuids !== null && !matchingFiles)}>
+            {recoveryMissingFileUuids === null ? "Verificar e continuar" : "Enviar arquivos pendentes"}
+          </button>
+          <button type="button" className="button-secondary" onClick={discardLocalSession} disabled={requestActive}>Descartar sessão local</button>
+        </div>
+        <p className="field-help">Descartar apaga somente os dados desta aba. Nenhum dado remoto será excluído.</p>
       </section>
     );
   }
@@ -327,41 +386,7 @@ export function IntakeForm() {
         {progress ? <span>{progress}</span> : null}
       </div>
 
-      {pending ? (
-        <section className="pending-panel" aria-labelledby="pending-title">
-          <p className="eyebrow">Envio pendente</p>
-          <h2 id="pending-title">Referência: {pending.project_reference}</h2>
-          <p>
-            Selecione novamente todos os arquivos originais. Antes de continuar, conferiremos nome
-            e tamanho para evitar o envio silencioso de um arquivo diferente.
-          </p>
-          <div className="button-row">
-            <button type="button" onClick={handleResume} disabled={requestActive}>
-              Continuar envio pendente
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={discardLocalSession}
-              disabled={requestActive}
-            >
-              Descartar sessão local
-            </button>
-          </div>
-          <p className="field-help">
-            Descartar apaga somente os dados desta aba. Nenhum dado remoto será excluído.
-          </p>
-        </section>
-      ) : null}
 
-      {errors.length > 0 ? (
-        <section className="error-panel" aria-labelledby="validation-title">
-          <h2 id="validation-title">Revise antes de enviar</h2>
-          <ul>
-            {errors.map((error) => <li key={error}>{error}</li>)}
-          </ul>
-        </section>
-      ) : null}
 
       {notice ? <p className="notice-panel" role="alert">{notice}</p> : null}
       <FormFields
@@ -372,6 +397,13 @@ export function IntakeForm() {
         onExposure={onExposure}
         onFiles={setFiles}
       />
+
+      <section className="form-section" aria-label="Resumo do envio">
+        <h2>Resumo do envio</h2>
+        <p>Tecnologia: {values.branch === "FDM" ? "FDM" : "RESINA"}</p>
+        <p>Entrega: {values.fileDeliveryMode === "UPLOAD" ? "Upload" : "Link"}</p>
+        {values.fileDeliveryMode === "UPLOAD" ? <p>{files.length} {files.length === 1 ? "arquivo" : "arquivos"} · {(files.reduce((total, file) => total + file.size, 0) / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB</p> : null}
+      </section>
 
       <PrivacyNotice />
 
@@ -411,6 +443,13 @@ export function IntakeForm() {
         />
       ) : null}
       {turnstileError ? <p className="notice-panel" role="alert">{turnstileError}</p> : null}
+
+      {errors.length > 0 ? (
+        <section ref={errorSummaryRef} tabIndex={-1} className="error-panel" aria-labelledby="validation-title" role="alert">
+          <h2 id="validation-title">Revise antes de enviar</h2>
+          <ul>{errors.map((error) => <li key={error}>{error}</li>)}</ul>
+        </section>
+      ) : null}
 
       <button
         className="submit-button"

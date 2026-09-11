@@ -35,13 +35,14 @@ export function validateFiles(files: readonly NamedSizedFile[]): string[] {
   if (files.length < 1) errors.push("Selecione pelo menos um arquivo.");
   if (files.length > MAX_FILE_COUNT) errors.push("Selecione no máximo 5 arquivos.");
   let combinedSize = 0;
+  const combinedTooLarge = files.reduce((total, file) => total + file.size, 0) > MAX_PROJECT_SIZE_BYTES;
   for (const file of files) {
     if (!ALLOWED_EXTENSIONS.has(extensionOf(file.name))) {
       errors.push(`O arquivo "${file.name}" usa uma extensão não permitida.`);
     }
     if (!Number.isSafeInteger(file.size) || file.size <= 0) {
       errors.push(`O arquivo "${file.name}" está vazio ou possui tamanho inválido.`);
-    } else if (file.size > MAX_FILE_SIZE_BYTES) {
+    } else if (file.size > MAX_FILE_SIZE_BYTES && !combinedTooLarge) {
       errors.push(`O arquivo "${file.name}" excede o limite técnico por arquivo.`);
     }
     combinedSize += file.size;
@@ -50,6 +51,18 @@ export function validateFiles(files: readonly NamedSizedFile[]): string[] {
     errors.push("Os arquivos excedem 50 MB no total. Use um link compartilhado.");
   }
   return errors;
+}
+
+export function appendFiles<T extends NamedSizedFile>(current: readonly T[], added: readonly T[]): T[] {
+  return [...current, ...added];
+}
+
+export function removeFileAt<T>(files: readonly T[], index: number): T[] {
+  return files.filter((_, currentIndex) => currentIndex !== index);
+}
+
+export function formatFileSize(bytes: number): string {
+  return `${(bytes / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`;
 }
 
 export function validateExposureFactors(factors: readonly string[]): string[] {
