@@ -418,7 +418,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
 
       <section className="form-section" aria-label="Resumo do envio">
         <h2>Resumo do envio</h2>
-        <p>Tecnologia: {values.branch === "FDM" ? "FDM" : "RESINA"}</p>
+        <p>Tipo de projeto: {values.branch === "FDM" ? "Peça funcional" : "Resina / alto detalhe"}</p>
         <p>Entrega: {values.fileDeliveryMode === "UPLOAD" ? "Upload" : "Link"}</p>
         {values.fileDeliveryMode === "UPLOAD" ? <p>{files.length} {files.length === 1 ? "arquivo" : "arquivos"} · {(files.reduce((total, file) => total + file.size, 0) / 1_000_000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB</p> : null}
       </section>
