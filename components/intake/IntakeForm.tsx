@@ -99,8 +99,16 @@ function errorMessage(error: unknown): string {
   return "Não foi possível concluir o envio. Você pode tentar continuar a sessão pendente.";
 }
 
-export function IntakeForm() {
-  const [values, setValues] = useState<IntakeFormValues>(INITIAL_VALUES);
+interface IntakeFormProps {
+  initialBranch?: "FDM" | "RESIN";
+  lockBranch?: boolean;
+}
+
+export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProps) {
+  const [values, setValues] = useState<IntakeFormValues>({
+    ...INITIAL_VALUES,
+    ...(initialBranch ? { branch: initialBranch } : {}),
+  });
   const [files, setFiles] = useState<File[]>([]);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [turnstileError, setTurnstileError] = useState<string | null>(null);
@@ -381,7 +389,7 @@ export function IntakeForm() {
   return (
     <form className="intake-form" onSubmit={handleSubmit} noValidate>
       <header className="form-header">
-        <p className="eyebrow">Harness técnico · P2.3.6B</p>
+        <p className="eyebrow">OrStudio Print · Impressão 3D sob medida</p>
         <h1>Conte sobre seu projeto</h1>
         <p>
           Envie as informações técnicas para avaliarmos a viabilidade e prepararmos uma simulação
@@ -405,6 +413,7 @@ export function IntakeForm() {
         onField={onField}
         onExposure={onExposure}
         onFiles={setFiles}
+        lockBranch={lockBranch}
       />
 
       <section className="form-section" aria-label="Resumo do envio">

@@ -17,6 +17,7 @@ interface FormFieldsProps {
   onField(name: keyof IntakeFormValues, value: string | boolean): void;
   onExposure(factor: ExposureFactor): void;
   onFiles(files: File[]): void;
+  lockBranch?: boolean;
 }
 
 export function FormFields({
@@ -26,9 +27,11 @@ export function FormFields({
   onField,
   onExposure,
   onFiles,
+  lockBranch = false,
 }: FormFieldsProps) {
   return (
     <>
+      {!lockBranch ? <>
       <fieldset disabled={disabled}>
         <legend>Tecnologia</legend>
         <div className="choice-row">
@@ -54,6 +57,7 @@ export function FormFields({
           </label>
         </div>
       </fieldset>
+      </> : null}
 
       <section className="form-section" aria-labelledby="contact-heading">
         <h2 id="contact-heading">Seus dados</h2>
@@ -186,7 +190,7 @@ export function FormFields({
 
       {values.branch === "FDM" ? (
         <section className="form-section" aria-labelledby="fdm-heading">
-          <h2 id="fdm-heading">Uso da peça FDM</h2>
+          <h2 id="fdm-heading">Como a peça será usada</h2>
           <label>
             Uso pretendido <span aria-hidden="true">*</span>
             <textarea
