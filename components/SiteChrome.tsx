@@ -1,8 +1,15 @@
 import Link from "next/link";
 
-export function SiteHeader() {
-  return <header className="site-header"><nav aria-label="Principal">
-    <Link href="/">OrStudio Print</Link><Link href="/pecas">Peças</Link><Link href="/resina">Resina</Link>
-  </nav></header>;
+type ActiveSection = "pecas" | "resina";
+
+function BrandLockup() {
+  return <Link className="brand-lockup" href="/"><img src="/brand/orstudio-print-mark.svg" alt="" /><span className="brand-wordmark"><span>OrStudio</span><span className="brand-wordmark-accent"> Print</span></span></Link>;
 }
-export function SiteFooter() { return <footer className="site-footer">OrStudio Print · Impressão 3D sob medida</footer>; }
+
+export function SiteHeader({ active }: { active?: ActiveSection }) {
+  return <header className="site-header"><nav aria-label="Principal"><BrandLockup /><Link className="site-nav-link" href="/pecas" aria-current={active === "pecas" ? "page" : undefined}>Peças</Link><Link className="site-nav-link" href="/resina" aria-current={active === "resina" ? "page" : undefined}>Resina</Link></nav></header>;
+}
+
+export function SiteFooter() {
+  return <footer className="site-footer"><div className="footer-brand"><img src="/brand/orstudio-print-mark.svg" alt="" /><strong>OrStudio Print</strong></div><p>Impressão 3D sob medida · Curitiba e região</p></footer>;
+}
