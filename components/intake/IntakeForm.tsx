@@ -7,6 +7,7 @@ import {
   clearPendingSession,
   createPendingSession,
   matchPendingFiles,
+  migrateLegacyPendingSession,
   type PendingIntakeSession,
   readPendingSession,
   savePendingSession,
@@ -118,13 +119,17 @@ export function IntakeForm() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const restored = readPendingSession(window.sessionStorage);
+      let restored: PendingIntakeSession | null = null;
+      try {
+        restored = readPendingSession(window.localStorage) ??
+          migrateLegacyPendingSession(window.localStorage, window.sessionStorage);
+      } catch {
+        restored = null;
+      }
       if (restored) {
         setPending(restored);
         setPhase("PENDING");
-        setNotice(
-          "Existe um envio pendente. Selecione novamente os mesmos arquivos para continuar.",
-        );
+        setNotice("Existe um envio pendente. Verifique o estado para continuar.");
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -159,7 +164,7 @@ export function IntakeForm() {
   }, []);
 
   const finishSuccessfully = useCallback((reference: string) => {
-    clearPendingSession(window.sessionStorage);
+    clearPendingSession(window.localStorage);
     setPending(null);
     setSuccessReference(reference);
     setNotice(null);
@@ -229,7 +234,9 @@ export function IntakeForm() {
       }
 
       const session = createPendingSession(response, files);
-      savePendingSession(window.sessionStorage, session);
+      if (!savePendingSession(window.localStorage, session)) {
+        setNotice("Nao foi possivel salvar a recuperacao. Se fechar o navegador, este envio pode nao ficar disponivel.");
+      }
       setPending(session);
       const fileMapping = matchPendingFiles(session.files, files);
       if (!fileMapping) throw new Error("MAPPING_MISMATCH");
@@ -309,7 +316,7 @@ export function IntakeForm() {
   }
 
   function discardLocalSession() {
-    clearPendingSession(window.sessionStorage);
+    clearPendingSession(window.localStorage);
     setRecoveryMissingFileUuids(null);
     setRecoveryAuthorizations([]);
     setRecoveryFiles([]);
@@ -343,6 +350,7 @@ export function IntakeForm() {
         <p className="eyebrow">Envio pendente</p>
         <h1 id="pending-title">Referência: {pending.project_reference}</h1>
         <p>A solicitação já foi criada. Você não precisa preencher o formulário novamente.</p>
+        <p className="field-help">A recuperação deste envio fica disponível neste navegador por até 24 horas.</p>
         {recoveryMissingFileUuids !== null ? (
           <>
             <p>Precisamos reenviar:</p>
