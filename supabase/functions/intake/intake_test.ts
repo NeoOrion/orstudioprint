@@ -1,6 +1,7 @@
 import {
   buildStorageManifest,
   MAX_FILE_SIZE_BYTES,
+  MAX_PROJECT_SIZE_BYTES,
   normalizeExtension,
   validateFileDescriptors,
 } from "./file_policy.ts";
@@ -86,12 +87,20 @@ Deno.test("rejects more than five files", () => {
   );
 });
 
-Deno.test("rejects a combined project size above 50 MiB", () => {
+Deno.test("accepts a combined project size of exactly 50 MB decimal", () => {
+  validateFileDescriptors([
+    { original_name: "one.stl", declared_size_bytes: 30_000_000 },
+    { original_name: "two.obj", declared_size_bytes: 20_000_000 },
+  ]);
+  assertEquals(MAX_PROJECT_SIZE_BYTES, 50_000_000);
+});
+
+Deno.test("rejects a combined project size of 50,000,001 bytes", () => {
   assertThrowsCode(
     () =>
       validateFileDescriptors([
-        { original_name: "one.stl", declared_size_bytes: 30 * 1024 * 1024 },
-        { original_name: "two.obj", declared_size_bytes: 21 * 1024 * 1024 },
+        { original_name: "one.stl", declared_size_bytes: 30_000_000 },
+        { original_name: "two.obj", declared_size_bytes: 20_000_001 },
       ]),
     "PROJECT_FILES_TOO_LARGE",
   );
@@ -105,6 +114,45 @@ Deno.test("rejects an individual file above 50 MiB", () => {
       ]),
     "FILE_TOO_LARGE",
   );
+});
+
+Deno.test("accepts the frozen exposure factor allowlist", () => {
+  const parsed = parseIntakeRequest(validCreate({
+    project: validProject({ exposure_factors: ["HEAT", "LOAD", "OUTDOOR", "IMPACT_FLEX"] }),
+  }));
+  assertEquals(parsed.action === "create" ? parsed.project.exposure_factors : undefined, [
+    "HEAT",
+    "LOAD",
+    "OUTDOOR",
+    "IMPACT_FLEX",
+  ]);
+});
+
+Deno.test("rejects unsupported and duplicate exposure factors", () => {
+  assertThrowsCode(
+    () =>
+      parseIntakeRequest(validCreate({
+        project: validProject({ exposure_factors: ["WATER"] }),
+      })),
+    "INVALID_EXPOSURE_FACTOR",
+  );
+  assertThrowsCode(
+    () =>
+      parseIntakeRequest(validCreate({
+        project: validProject({ exposure_factors: ["HEAT", "HEAT"] }),
+      })),
+    "DUPLICATE_EXPOSURE_FACTOR",
+  );
+});
+
+Deno.test("NONE and UNKNOWN exposure factors are exclusive", () => {
+  for (const factors of [["NONE", "HEAT"], ["UNKNOWN", "LOAD"], ["NONE", "UNKNOWN"]]) {
+    assertThrowsCode(
+      () =>
+        parseIntakeRequest(validCreate({ project: validProject({ exposure_factors: factors }) })),
+      "EXCLUSIVE_EXPOSURE_FACTOR",
+    );
+  }
 });
 
 Deno.test("requires intended_use for FDM", () => {

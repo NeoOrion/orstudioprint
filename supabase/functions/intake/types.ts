@@ -1,5 +1,6 @@
 export type Branch = "FDM" | "RESIN";
 export type FileDeliveryMode = "UPLOAD" | "LINK";
+export type ExposureFactor = "HEAT" | "LOAD" | "OUTDOOR" | "IMPACT_FLEX" | "NONE" | "UNKNOWN";
 
 export interface ProjectInput {
   branch: Branch;
@@ -19,7 +20,7 @@ export interface ProjectInput {
   deadline_note?: string;
   comments?: string;
   intended_use?: string;
-  exposure_factors?: string[];
+  exposure_factors?: ExposureFactor[];
   scale_or_height?: string;
   detail_notes?: string;
   external_file_url?: string;

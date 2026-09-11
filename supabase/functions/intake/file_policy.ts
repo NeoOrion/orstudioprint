@@ -1,8 +1,10 @@
 import type { FileDescriptor, StorageManifestEntry } from "./types.ts";
 
 export const MAX_FILE_COUNT = 5;
-export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
-export const MAX_PROJECT_SIZE_BYTES = 50 * 1024 * 1024;
+// Technical per-object backstop aligned with the Storage bucket (50 MiB).
+export const MAX_FILE_SIZE_BYTES = 52_428_800;
+// Frozen combined business limit (50 MB decimal).
+export const MAX_PROJECT_SIZE_BYTES = 50_000_000;
 export const ALLOWED_EXTENSIONS = new Set(["stl", "3mf", "obj", "step", "stp"]);
 
 export class FilePolicyError extends Error {
@@ -59,7 +61,7 @@ export function validateFileDescriptors(files: FileDescriptor[]): void {
   }
 
   if (combinedSize > MAX_PROJECT_SIZE_BYTES) {
-    throw new FilePolicyError("PROJECT_FILES_TOO_LARGE", "Combined file size exceeds 50 MiB.");
+    throw new FilePolicyError("PROJECT_FILES_TOO_LARGE", "Combined file size exceeds 50 MB.");
   }
 }
 

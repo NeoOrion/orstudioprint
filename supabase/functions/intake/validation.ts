@@ -3,6 +3,7 @@ import type {
   AuthorizedProjectRequest,
   Branch,
   CreateRequest,
+  ExposureFactor,
   FileDeliveryMode,
   FileDescriptor,
   IntakeRequest,
@@ -11,6 +12,14 @@ import type {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EXPOSURE_FACTORS = new Set<ExposureFactor>([
+  "HEAT",
+  "LOAD",
+  "OUTDOOR",
+  "IMPACT_FLEX",
+  "NONE",
+  "UNKNOWN",
+]);
 
 const CREATE_KEYS = new Set(["action", "turnstileToken", "project", "files"]);
 const AUTHORIZED_KEYS = new Set(["action", "projectId", "submissionToken"]);
@@ -128,7 +137,7 @@ function parseFiles(value: unknown): FileDescriptor[] {
   });
 }
 
-function parseExposureFactors(value: unknown): string[] | undefined {
+function parseExposureFactors(value: unknown): ExposureFactor[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.length > 20) {
     throw new ValidationError(
@@ -136,7 +145,29 @@ function parseExposureFactors(value: unknown): string[] | undefined {
       "exposure_factors must be an array of at most 20 strings.",
     );
   }
-  return value.map((item, index) => requiredString(item, `exposure_factors[${index}]`, 200));
+  const factors = value.map((item, index) => {
+    const factor = requiredString(item, `exposure_factors[${index}]`, 200);
+    if (!EXPOSURE_FACTORS.has(factor as ExposureFactor)) {
+      throw new ValidationError(
+        "INVALID_EXPOSURE_FACTOR",
+        "exposure_factors contains an unsupported value.",
+      );
+    }
+    return factor as ExposureFactor;
+  });
+  if (new Set(factors).size !== factors.length) {
+    throw new ValidationError(
+      "DUPLICATE_EXPOSURE_FACTOR",
+      "exposure_factors must not contain duplicates.",
+    );
+  }
+  if (factors.length > 1 && (factors.includes("NONE") || factors.includes("UNKNOWN"))) {
+    throw new ValidationError(
+      "EXCLUSIVE_EXPOSURE_FACTOR",
+      "NONE and UNKNOWN cannot be combined with other exposure factors.",
+    );
+  }
+  return factors;
 }
 
 function parseProject(value: unknown): ProjectInput {
