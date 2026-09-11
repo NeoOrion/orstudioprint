@@ -71,6 +71,12 @@ export interface FileDescriptor {
   declared_size_bytes: number;
 }
 
+export interface UploadFileDescriptor {
+  file_uuid: string;
+  original_name: string;
+  declared_size_bytes: number;
+}
+
 export interface UploadAuthorization {
   file_uuid: string;
   storage_path: string;
@@ -83,6 +89,7 @@ export interface CreateIntakeResponse {
   project_reference: string;
   submission_token: string;
   status: string;
+  upload_files?: UploadFileDescriptor[];
   uploads?: UploadAuthorization[];
   upload_authorization_incomplete?: boolean;
   authorization_missing_file_uuids?: string[];

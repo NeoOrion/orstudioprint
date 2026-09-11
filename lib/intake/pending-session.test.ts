@@ -13,6 +13,7 @@ const response: CreateIntakeResponse = {
   project_reference: "OP-00042",
   submission_token: "client-held-token",
   status: "UPLOAD_PENDING",
+  upload_files: [{ file_uuid: "22222222-2222-4222-8222-222222222222", original_name: "triangle.stl", declared_size_bytes: 128 }],
   uploads: [
     {
       file_uuid: "22222222-2222-4222-8222-222222222222",

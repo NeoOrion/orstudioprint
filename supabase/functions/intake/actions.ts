@@ -200,6 +200,11 @@ export async function handleCreate(
   return {
     body: {
       ...baseResponse,
+      upload_files: manifest.map(({ file_uuid, original_name, declared_size_bytes }) => ({
+        file_uuid,
+        original_name,
+        declared_size_bytes,
+      })),
       uploads: uploadResult.authorizations,
       upload_authorization_incomplete: uploadResult.failedFileUuids.length > 0,
       ...(uploadResult.failedFileUuids.length > 0

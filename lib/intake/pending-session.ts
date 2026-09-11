@@ -1,4 +1,4 @@
-import type { CreateIntakeResponse, NamedSizedFile } from "./types";
+import type { CreateIntakeResponse, NamedSizedFile, UploadFileDescriptor } from "./types";
 
 export const PENDING_SESSION_KEY = "orstudio_intake_pending_v1";
 
@@ -37,21 +37,36 @@ export function createPendingSession(
   response: CreateIntakeResponse,
   files: readonly NamedSizedFile[],
 ): PendingIntakeSession {
-  const uploads = response.uploads ?? [];
-  if (response.upload_authorization_incomplete || uploads.length !== files.length) {
-    throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
+  const uploadFiles = response.upload_files ?? [];
+  if (uploadFiles.length !== files.length) {
+    throw new Error("MAPPING_MISMATCH");
   }
+  uploadFiles.forEach((uploadFile, index) => {
+    if (!isUploadFileDescriptor(uploadFile) ||
+      uploadFile.original_name !== files[index].name ||
+      uploadFile.declared_size_bytes !== files[index].size) {
+      throw new Error("MAPPING_MISMATCH");
+    }
+  });
   return {
     version: 1,
     project_id: response.project_id,
     project_reference: response.project_reference,
     submission_token: response.submission_token,
-    files: uploads.map((upload, index) => ({
-      file_uuid: upload.file_uuid,
-      original_name: files[index].name,
-      declared_size_bytes: files[index].size,
+    files: uploadFiles.map((uploadFile) => ({
+      file_uuid: uploadFile.file_uuid,
+      original_name: uploadFile.original_name,
+      declared_size_bytes: uploadFile.declared_size_bytes,
     })),
   };
+}
+
+function isUploadFileDescriptor(value: unknown): value is UploadFileDescriptor {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.file_uuid === "string" &&
+    typeof candidate.original_name === "string" &&
+    typeof candidate.declared_size_bytes === "number";
 }
 
 export function serializePendingSession(session: PendingIntakeSession): string {

@@ -75,6 +75,16 @@ const PHASE_LABELS: Record<UiPhase, string> = {
   PENDING: "Envio pendente",
 };
 
+function authorizationsCoverExpectedFiles(
+  authorizations: readonly UploadAuthorization[],
+  expectedFileUuids: readonly string[],
+): boolean {
+  if (authorizations.length !== expectedFileUuids.length) return false;
+  const expected = new Set(expectedFileUuids);
+  return authorizations.every((authorization) => expected.delete(authorization.file_uuid)) &&
+    expected.size === 0;
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof IntakeClientError) {
     return `${error.message} (código: ${error.code})`;
@@ -207,26 +217,30 @@ export function IntakeForm() {
         return;
       }
 
-      let session: PendingIntakeSession;
-      try {
-        session = createPendingSession(response, files);
-      } catch (error) {
-        session = {
-          version: 1,
-          project_id: response.project_id,
-          project_reference: response.project_reference,
-          submission_token: response.submission_token,
-          files: [],
-        };
-        savePendingSession(window.sessionStorage, session);
-        setPending(session);
-        throw error;
-      }
+      const session = createPendingSession(response, files);
       savePendingSession(window.sessionStorage, session);
       setPending(session);
       const fileMapping = matchPendingFiles(session.files, files);
       if (!fileMapping) throw new Error("MAPPING_MISMATCH");
-      await uploadAndFinalize(session, response.uploads ?? [], fileMapping);
+
+      const authorizations = response.uploads ?? [];
+      if (!response.upload_authorization_incomplete &&
+        authorizationsCoverExpectedFiles(authorizations, session.files.map((file) => file.file_uuid))) {
+        await uploadAndFinalize(session, authorizations, fileMapping);
+      } else {
+        const resumed = await resumeIntake(session.project_id, session.submission_token);
+        if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
+          finishSuccessfully(resumed.project_reference);
+          return;
+        }
+        const missingFileUuids = resumed.missing_file_uuids ?? session.files.map((file) => file.file_uuid);
+        const resumedAuthorizations = resumed.uploads ?? [];
+        if (resumed.upload_authorization_incomplete ||
+          !authorizationsCoverExpectedFiles(resumedAuthorizations, missingFileUuids)) {
+          throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
+        }
+        await uploadAndFinalize(session, resumedAuthorizations, fileMapping);
+      }
     } catch (error) {
       setPhase("RECOVERABLE_ERROR");
       setNotice(errorMessage(error));
@@ -261,10 +275,13 @@ export function IntakeForm() {
         finishSuccessfully(resumed.project_reference);
         return;
       }
-      if (resumed.upload_authorization_incomplete) {
+      const missingFileUuids = resumed.missing_file_uuids ?? [];
+      const resumedAuthorizations = resumed.uploads ?? [];
+      if (resumed.upload_authorization_incomplete ||
+        !authorizationsCoverExpectedFiles(resumedAuthorizations, missingFileUuids)) {
         throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
       }
-      await uploadAndFinalize(pending, resumed.uploads ?? [], fileMapping);
+      await uploadAndFinalize(pending, resumedAuthorizations, fileMapping);
     } catch (error) {
       setPhase("RECOVERABLE_ERROR");
       setNotice(errorMessage(error));
