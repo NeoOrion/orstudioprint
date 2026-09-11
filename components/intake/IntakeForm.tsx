@@ -392,7 +392,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
         <p className="eyebrow">OrStudio Print · Impressão 3D sob medida</p>
         <h1>Conte sobre seu projeto</h1>
         <p>
-          Envie as informações técnicas para avaliarmos a viabilidade e prepararmos uma simulação
+          Envie as informações necessárias para avaliarmos o projeto e prepararmos uma simulação
           de preço.
         </p>
       </header>
