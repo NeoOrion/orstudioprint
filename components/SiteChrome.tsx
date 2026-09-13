@@ -11,5 +11,5 @@ export function SiteHeader({ active }: { active?: ActiveSection }) {
 }
 
 export function SiteFooter() {
-  return <footer className="site-footer"><div className="footer-brand"><img src="/brand/orstudio-print-mark.svg" alt="" /><strong>OrStudio Print</strong></div><p>Impressão 3D sob medida · Curitiba e região</p></footer>;
+  return <footer className="site-footer"><div className="footer-brand"><img src="/brand/orstudio-print-mark.svg" alt="" /><strong>OrStudio Print</strong></div><p>Base em Curitiba, PR · Projetos de todo o Brasil podem ser avaliados.</p></footer>;
 }
