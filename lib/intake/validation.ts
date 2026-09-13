@@ -115,7 +115,7 @@ export function validateForm(
     errors.push("Confirme as duas declarações obrigatórias.");
   }
   if (values.branch === "FDM" && !values.intendedUse.trim()) {
-    errors.push("Informe o uso pretendido para o projeto FDM.");
+    errors.push("Informe como a peça será usada.");
   }
   errors.push(...validateExposureFactors(values.exposureFactors));
   if (values.fileDeliveryMode === "UPLOAD") {

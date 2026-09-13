@@ -12,6 +12,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   validateExposureFactors,
   validateFiles,
+  validateForm,
 } from "./validation";
 
 function form(overrides: Partial<IntakeFormValues> = {}): IntakeFormValues {
@@ -78,6 +79,18 @@ describe("exposure factors", () => {
     expect(validateExposureFactors(["HEAT", "HEAT"])).not.toEqual([]);
     expect(validateExposureFactors(["NONE", "HEAT"])).not.toEqual([]);
     expect(validateExposureFactors(["UNKNOWN", "LOAD"])).not.toEqual([]);
+  });
+});
+
+describe("public validation language", () => {
+  it("does not expose the FDM acronym in the intended-use error", () => {
+    const errors = validateForm(
+      form({ intendedUse: "" }),
+      [{ name: "piece.stl", size: 1 }],
+    );
+
+    expect(errors).toContain("Informe como a peça será usada.");
+    expect(errors.join(" ")).not.toContain("FDM");
   });
 });
 

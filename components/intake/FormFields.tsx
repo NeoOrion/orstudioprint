@@ -1,5 +1,5 @@
-import type { ExposureFactor, IntakeFormValues } from "@/lib/intake/types";
-import { formatFileSize, removeFileAt } from "@/lib/intake/validation";
+import type { ExposureFactor, IntakeFormValues } from "../../lib/intake/types";
+import { formatFileSize, removeFileAt } from "../../lib/intake/validation";
 
 const EXPOSURE_OPTIONS: Array<{ value: ExposureFactor; label: string }> = [
   { value: "HEAT", label: "Calor" },
@@ -29,6 +29,9 @@ export function FormFields({
   onFiles,
   lockBranch = false,
 }: FormFieldsProps) {
+  const isPublicFdm = lockBranch && values.branch === "FDM";
+  const isPublicResin = lockBranch && values.branch === "RESIN";
+
   return (
     <>
       {!lockBranch ? <>
@@ -225,15 +228,17 @@ export function FormFields({
         <section className="form-section" aria-labelledby="resin-heading">
           <h2 id="resin-heading">Detalhes para resina</h2>
           <div className="field-grid">
-            <label>
-              Escala / altura <span className="optional">(opcional)</span>
-              <input
-                placeholder="Ex.: 32 mm ou escala 1:10"
-                value={values.scaleOrHeight}
-                onChange={(event) => onField("scaleOrHeight", event.target.value)}
-                disabled={disabled}
-              />
-            </label>
+            {!isPublicResin ? (
+              <label>
+                Escala / altura <span className="optional">(opcional)</span>
+                <input
+                  placeholder="Ex.: 32 mm ou escala 1:10"
+                  value={values.scaleOrHeight}
+                  onChange={(event) => onField("scaleOrHeight", event.target.value)}
+                  disabled={disabled}
+                />
+              </label>
+            ) : null}
             <label>
               Observações de detalhe <span className="optional">(opcional)</span>
               <textarea
@@ -248,7 +253,9 @@ export function FormFields({
       )}
 
       <section className="form-section" aria-labelledby="delivery-heading">
-        <h2 id="delivery-heading">Como enviar o modelo</h2>
+        <h2 id="delivery-heading">
+          {isPublicFdm ? "Como enviar o arquivo ou referência" : "Como enviar o modelo"}
+        </h2>
         <fieldset disabled={disabled}>
           <legend>Forma de entrega</legend>
           <div className="choice-row">
@@ -260,7 +267,10 @@ export function FormFields({
                 checked={values.fileDeliveryMode === "UPLOAD"}
                 onChange={() => onField("fileDeliveryMode", "UPLOAD")}
               />
-              <span><strong>Enviar arquivos</strong><small>Upload direto e privado</small></span>
+              <span>
+                <strong>{isPublicFdm ? "Enviar arquivo 3D" : "Enviar arquivos"}</strong>
+                <small>Upload direto e privado</small>
+              </span>
             </label>
             <label className="choice-card">
               <input
@@ -270,7 +280,14 @@ export function FormFields({
                 checked={values.fileDeliveryMode === "LINK"}
                 onChange={() => onField("fileDeliveryMode", "LINK")}
               />
-              <span><strong>Compartilhar link</strong><small>Drive, Dropbox ou OneDrive</small></span>
+              <span>
+                <strong>{isPublicFdm ? "Compartilhar referência por link" : "Compartilhar link"}</strong>
+                <small>
+                  {isPublicFdm
+                    ? "Drive, Dropbox, OneDrive ou outro link HTTPS"
+                    : "Drive, Dropbox ou OneDrive"}
+                </small>
+              </span>
             </label>
           </div>
         </fieldset>
@@ -321,8 +338,9 @@ export function FormFields({
               disabled={disabled}
             />
             <span className="field-help">
-              Use um link compartilhado que possamos abrir sem solicitar acesso.
-              Exemplos: Google Drive / Dropbox / OneDrive.
+              {isPublicFdm
+                ? "Pode ser uma pasta com fotos, medidas, arquivo 3D ou outra referência do projeto. O link deve abrir sem solicitar acesso."
+                : "Use um link compartilhado que possamos abrir sem solicitar acesso. Exemplos: Google Drive / Dropbox / OneDrive."}
             </span>
           </label>
         )}
