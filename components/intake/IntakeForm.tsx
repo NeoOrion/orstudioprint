@@ -2,7 +2,21 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-import { createIntake, finalizeIntake, IntakeClientError, resumeIntake } from "@/lib/intake/api";
+import {
+  buildInteractionEvent,
+  buildSubmittedEvent,
+  claimCurrentFormStarted,
+  getCurrentExperimentSession,
+  routeForBranch,
+  type ExperimentSession,
+} from "@/lib/experiment/session";
+import {
+  createIntake,
+  finalizeIntake,
+  IntakeClientError,
+  resumeIntake,
+  sendExperimentEventBestEffort,
+} from "@/lib/intake/api";
 import {
   clearPendingSession,
   createPendingSession,
@@ -14,6 +28,7 @@ import {
 } from "@/lib/intake/pending-session";
 import { uploadAuthorizedFile } from "@/lib/intake/storage";
 import type {
+  Branch,
   ExposureFactor,
   IntakeFormValues,
   UploadAuthorization,
@@ -104,6 +119,18 @@ interface IntakeFormProps {
   lockBranch?: boolean;
 }
 
+interface PublicSubmissionContext {
+  session: ExperimentSession;
+  branch: Branch;
+}
+
+function recordFormSubmitted(projectId: string, context: PublicSubmissionContext | null) {
+  if (!context) return;
+  sendExperimentEventBestEffort(
+    buildSubmittedEvent(context.session, context.branch, projectId),
+  );
+}
+
 export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProps) {
   const [values, setValues] = useState<IntakeFormValues>({
     ...INITIAL_VALUES,
@@ -122,6 +149,10 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
   const [recoveryAuthorizations, setRecoveryAuthorizations] = useState<UploadAuthorization[]>([]);
   const [recoveryFiles, setRecoveryFiles] = useState<File[]>([]);
   const sessionIdRef = useRef("");
+  const pendingExperimentRef = useRef<{
+    projectId: string;
+    context: PublicSubmissionContext;
+  } | null>(null);
   const turnstileRef = useRef<TurnstileWidgetHandle>(null);
   const errorSummaryRef = useRef<HTMLElement>(null);
 
@@ -178,12 +209,14 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
     setNotice(null);
     setErrors([]);
     setPhase("SUCCESS");
+    pendingExperimentRef.current = null;
   }, []);
 
   const uploadAndFinalize = useCallback(async (
     session: PendingIntakeSession,
     authorizations: readonly UploadAuthorization[],
     fileMapping: Map<string, File>,
+    experimentContext: PublicSubmissionContext | null,
   ) => {
     for (const [index, authorization] of authorizations.entries()) {
       const file = fileMapping.get(authorization.file_uuid);
@@ -198,8 +231,24 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
     if (finalized.status !== "SUBMITTED" && !finalized.already_finalized) {
       throw new Error("FINALIZE_INCOMPLETE");
     }
+    recordFormSubmitted(finalized.project_id, experimentContext);
     finishSuccessfully(finalized.project_reference);
   }, [finishSuccessfully]);
+
+  function handlePublicFormChange() {
+    if (!lockBranch) return;
+    try {
+      const session = getCurrentExperimentSession();
+      const route = routeForBranch(values.branch);
+      if (claimCurrentFormStarted(session.session_id, route)) {
+        sendExperimentEventBestEffort(
+          buildInteractionEvent("form_started", session, values.branch),
+        );
+      }
+    } catch {
+      // Form interaction must remain unaffected when analytics is unavailable.
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -225,23 +274,45 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
       setPhase("CREATING");
       setProgress("Criando solicitação…");
       createAttempted = true;
-      if (!sessionIdRef.current) sessionIdRef.current = crypto.randomUUID();
+      let experimentContext: PublicSubmissionContext | null = null;
+      if (lockBranch) {
+        try {
+          experimentContext = {
+            session: getCurrentExperimentSession(),
+            branch: values.branch,
+          };
+        } catch {
+          experimentContext = null;
+        }
+      }
+      if (experimentContext) {
+        sessionIdRef.current = experimentContext.session.session_id;
+      } else if (!sessionIdRef.current) {
+        sessionIdRef.current = crypto.randomUUID();
+      }
       const response = await createIntake(
         turnstileToken,
         mapFormToProjectPayload(
           values,
-          extractAttribution(window.location.search),
+          experimentContext?.session ?? extractAttribution(window.location.search),
           sessionIdRef.current,
         ),
         fileDescriptors(files),
       );
       if (values.fileDeliveryMode === "LINK") {
         if (response.status !== "SUBMITTED") throw new Error("CREATE_INCOMPLETE");
+        recordFormSubmitted(response.project_id, experimentContext);
         finishSuccessfully(response.project_reference);
         return;
       }
 
       const session = createPendingSession(response, files);
+      if (experimentContext) {
+        pendingExperimentRef.current = {
+          projectId: response.project_id,
+          context: experimentContext,
+        };
+      }
       if (!savePendingSession(window.localStorage, session)) {
         setNotice("Nao foi possivel salvar a recuperacao. Se fechar o navegador, este envio pode nao ficar disponivel.");
       }
@@ -252,10 +323,13 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
       const authorizations = response.uploads ?? [];
       if (!response.upload_authorization_incomplete &&
         authorizationsCoverExpectedFiles(authorizations, session.files.map((file) => file.file_uuid))) {
-        await uploadAndFinalize(session, authorizations, fileMapping);
+        await uploadAndFinalize(session, authorizations, fileMapping, experimentContext);
       } else {
         const resumed = await resumeIntake(session.project_id, session.submission_token);
         if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
+          if (resumed.already_finalized || resumed.status === "SUBMITTED") {
+            recordFormSubmitted(resumed.project_id, experimentContext);
+          }
           finishSuccessfully(resumed.project_reference);
           return;
         }
@@ -265,7 +339,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
           !authorizationsCoverExpectedFiles(resumedAuthorizations, missingFileUuids)) {
           throw new Error("UPLOAD_AUTHORIZATION_INCOMPLETE");
         }
-        await uploadAndFinalize(session, resumedAuthorizations, fileMapping);
+        await uploadAndFinalize(session, resumedAuthorizations, fileMapping, experimentContext);
       }
     } catch (error) {
       setPhase("RECOVERABLE_ERROR");
@@ -279,12 +353,18 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
     if (!pending || requestActive) return;
     setErrors([]);
     setNotice(null);
+    const experimentContext = pendingExperimentRef.current?.projectId === pending.project_id
+      ? pendingExperimentRef.current.context
+      : null;
     try {
       if (recoveryMissingFileUuids === null) {
         setPhase("FINALIZING");
         setProgress("Verificando o envio pendente…");
         const resumed = await resumeIntake(pending.project_id, pending.submission_token);
         if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
+          if (resumed.already_finalized || resumed.status === "SUBMITTED") {
+            recordFormSubmitted(resumed.project_id, experimentContext);
+          }
           finishSuccessfully(resumed.project_reference);
           return;
         }
@@ -294,6 +374,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
           if (finalized.status !== "SUBMITTED" && !finalized.already_finalized) {
             throw new Error("FINALIZE_INCOMPLETE");
           }
+          recordFormSubmitted(finalized.project_id, experimentContext);
           finishSuccessfully(finalized.project_reference);
           return;
         }
@@ -316,7 +397,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
         setNotice("Adicione todos os arquivos solicitados com os mesmos nomes e tamanhos.");
         return;
       }
-      await uploadAndFinalize(pending, recoveryAuthorizations, fileMapping);
+      await uploadAndFinalize(pending, recoveryAuthorizations, fileMapping, experimentContext);
     } catch (error) {
       setPhase("RECOVERABLE_ERROR");
       setNotice(errorMessage(error));
@@ -387,7 +468,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
   }
 
   return (
-    <form className="intake-form" onSubmit={handleSubmit} noValidate>
+    <form className="intake-form" onChangeCapture={handlePublicFormChange} onSubmit={handleSubmit} noValidate>
       <header className="form-header">
         <p className="eyebrow">OrStudio Print · Impressão 3D sob medida</p>
         <h1>Conte sobre seu projeto</h1>

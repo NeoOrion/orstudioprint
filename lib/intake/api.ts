@@ -1,6 +1,7 @@
 import type {
   AuthorizedIntakeResponse,
   CreateIntakeResponse,
+  ExperimentEvent,
   FileDescriptor,
   ProjectPayload,
   PublicApiError,
@@ -114,4 +115,12 @@ export function resumeIntake(
     projectId,
     submissionToken,
   });
+}
+
+export function sendExperimentEvent(event: ExperimentEvent): Promise<unknown> {
+  return postIntake({ action: "event", event });
+}
+
+export function sendExperimentEventBestEffort(event: ExperimentEvent): void {
+  void sendExperimentEvent(event).catch(() => undefined);
 }

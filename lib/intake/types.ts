@@ -14,6 +14,25 @@ export interface Attribution {
   message_variant?: string;
 }
 
+export type ExperimentRoute = "/pecas" | "/resina";
+
+interface ExperimentEventBase extends Attribution {
+  session_id: string;
+  branch: Branch;
+  route: ExperimentRoute;
+}
+
+export interface ExperimentInteractionEvent extends ExperimentEventBase {
+  event_name: "quote_cta_clicked" | "form_started";
+}
+
+export interface ExperimentSubmittedEvent extends ExperimentEventBase {
+  event_name: "form_submitted";
+  project_id: string;
+}
+
+export type ExperimentEvent = ExperimentInteractionEvent | ExperimentSubmittedEvent;
+
 export interface IntakeFormValues {
   branch: Branch;
   firstName: string;

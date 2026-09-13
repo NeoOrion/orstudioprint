@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ExperimentSessionBootstrap } from "./ExperimentSessionBootstrap";
+
 type ActiveSection = "pecas" | "resina";
 
 function BrandLockup() {
@@ -7,7 +9,7 @@ function BrandLockup() {
 }
 
 export function SiteHeader({ active }: { active?: ActiveSection }) {
-  return <header className="site-header"><nav aria-label="Principal"><BrandLockup /><Link className="site-nav-link" href="/pecas" aria-current={active === "pecas" ? "page" : undefined}>Peças</Link><Link className="site-nav-link" href="/resina" aria-current={active === "resina" ? "page" : undefined}>Resina</Link></nav></header>;
+  return <header className="site-header"><ExperimentSessionBootstrap /><nav aria-label="Principal"><BrandLockup /><Link className="site-nav-link" href="/pecas" aria-current={active === "pecas" ? "page" : undefined}>Peças</Link><Link className="site-nav-link" href="/resina" aria-current={active === "resina" ? "page" : undefined}>Resina</Link></nav></header>;
 }
 
 export function SiteFooter() {
