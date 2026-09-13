@@ -10,6 +10,7 @@ import {
   createExperimentMemory,
   EXPERIMENT_SESSION_KEY,
   getExperimentSession,
+  shouldRecordFormSubmitted,
 } from "./session";
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
@@ -211,6 +212,22 @@ describe("form-start deduplication", () => {
     expect(claimFormStarted(storage, SESSION_ID, "/pecas", nextPageMemory)).toBe(false);
     expect(claimFormStarted(storage, SESSION_ID, "/resina", nextPageMemory)).toBe(true);
     expect(claimFormStarted(storage, SESSION_ID, "/resina", nextPageMemory)).toBe(false);
+  });
+});
+
+describe("form-submitted emission semantics", () => {
+  it("records only an explicit SUBMITTED status", () => {
+    expect(shouldRecordFormSubmitted({ status: "SUBMITTED" })).toBe(true);
+    expect(shouldRecordFormSubmitted({
+      status: "SUBMITTED",
+      already_finalized: true,
+    })).toBe(true);
+    expect(shouldRecordFormSubmitted({ status: "INVALID", already_finalized: true })).toBe(false);
+    expect(shouldRecordFormSubmitted({ status: "VALID", already_finalized: true })).toBe(false);
+    expect(shouldRecordFormSubmitted({
+      status: "WANT_TO_CLOSE",
+      already_finalized: true,
+    })).toBe(false);
   });
 });
 

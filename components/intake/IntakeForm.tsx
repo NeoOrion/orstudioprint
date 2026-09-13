@@ -8,6 +8,7 @@ import {
   claimCurrentFormStarted,
   getCurrentExperimentSession,
   routeForBranch,
+  shouldRecordFormSubmitted,
   type ExperimentSession,
 } from "@/lib/experiment/session";
 import {
@@ -231,7 +232,9 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
     if (finalized.status !== "SUBMITTED" && !finalized.already_finalized) {
       throw new Error("FINALIZE_INCOMPLETE");
     }
-    recordFormSubmitted(finalized.project_id, experimentContext);
+    if (shouldRecordFormSubmitted(finalized)) {
+      recordFormSubmitted(finalized.project_id, experimentContext);
+    }
     finishSuccessfully(finalized.project_reference);
   }, [finishSuccessfully]);
 
@@ -327,7 +330,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
       } else {
         const resumed = await resumeIntake(session.project_id, session.submission_token);
         if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
-          if (resumed.already_finalized || resumed.status === "SUBMITTED") {
+          if (shouldRecordFormSubmitted(resumed)) {
             recordFormSubmitted(resumed.project_id, experimentContext);
           }
           finishSuccessfully(resumed.project_reference);
@@ -362,7 +365,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
         setProgress("Verificando o envio pendente…");
         const resumed = await resumeIntake(pending.project_id, pending.submission_token);
         if (resumed.already_finalized || resumed.status !== "UPLOAD_PENDING") {
-          if (resumed.already_finalized || resumed.status === "SUBMITTED") {
+          if (shouldRecordFormSubmitted(resumed)) {
             recordFormSubmitted(resumed.project_id, experimentContext);
           }
           finishSuccessfully(resumed.project_reference);
@@ -374,7 +377,9 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
           if (finalized.status !== "SUBMITTED" && !finalized.already_finalized) {
             throw new Error("FINALIZE_INCOMPLETE");
           }
-          recordFormSubmitted(finalized.project_id, experimentContext);
+          if (shouldRecordFormSubmitted(finalized)) {
+            recordFormSubmitted(finalized.project_id, experimentContext);
+          }
           finishSuccessfully(finalized.project_reference);
           return;
         }

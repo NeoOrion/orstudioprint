@@ -127,6 +127,13 @@ export function buildSubmittedEvent(
   };
 }
 
+export function shouldRecordFormSubmitted(response: {
+  status: string;
+  already_finalized?: boolean;
+}): boolean {
+  return response.status === "SUBMITTED";
+}
+
 export function claimFormStarted(
   storage: SessionStorage | null,
   sessionId: string,
