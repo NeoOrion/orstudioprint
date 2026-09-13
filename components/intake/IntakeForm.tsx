@@ -260,6 +260,7 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
       setNotice("Continue ou descarte a sessão pendente antes de criar outra solicitação.");
       return;
     }
+    setProgress("");
     setPhase("VALIDATING");
     setNotice(null);
     const validationErrors = validateForm(values, files);
@@ -559,8 +560,14 @@ export function IntakeForm({ initialBranch, lockBranch = false }: IntakeFormProp
         className="submit-button"
         type="submit"
         disabled={requestActive || pending !== null || !turnstileToken}
+        aria-busy={requestActive}
       >
-        Enviar solicitação
+        {requestActive ? (
+          <>
+            <span className="submit-spinner" aria-hidden="true" />
+            <span>{progress || PHASE_LABELS[phase]}</span>
+          </>
+        ) : "Enviar solicitação"}
       </button>
       <p className="submission-note">
         O envio não cria pedido, cobrança ou reserva de produção.
