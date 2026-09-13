@@ -5,6 +5,7 @@ import { constantTimeHexEqual, generateSubmissionToken, hashSubmissionToken } fr
 import type {
   AuthorizedProjectRequest,
   CreateRequest,
+  EventRequest,
   StorageManifestEntry,
   UploadAuthorization,
 } from "./types.ts";
@@ -112,6 +113,32 @@ export async function verifyTurnstile(
   if (result.success !== true) {
     throw new HttpError(422, "TURNSTILE_FAILED", "Human verification failed.");
   }
+}
+
+export async function handleEvent(
+  request: EventRequest,
+  admin: AdminClient,
+): Promise<{ body: unknown; status: number }> {
+  const event = request.event;
+  const insertValue = {
+    event_name: event.event_name,
+    session_id: event.session_id,
+    branch: event.branch,
+    route: event.route,
+    ...(event.project_id ? { project_id: event.project_id } : {}),
+    ...(event.source ? { source: event.source } : {}),
+    ...(event.campaign ? { campaign: event.campaign } : {}),
+    ...(event.message_variant ? { message_variant: event.message_variant } : {}),
+  };
+  const { error } = await admin.from("events").insert(insertValue);
+  if (error) {
+    console.error("Event insert failed", {
+      code: error.code,
+      event_name: request.event.event_name,
+    });
+    throw new HttpError(503, "SERVICE_UNAVAILABLE", "Intake service is unavailable.");
+  }
+  return { body: { accepted: true }, status: 201 };
 }
 
 async function createUploadAuthorizations(

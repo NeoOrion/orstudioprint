@@ -1,4 +1,4 @@
-import { handleCreate, handleFinalize, handleResume } from "./actions.ts";
+import { handleCreate, handleEvent, handleFinalize, handleResume } from "./actions.ts";
 import { corsHeaders, isOriginAllowed, parseAllowedOrigins } from "./cors.ts";
 import { HttpError, jsonResponse, publicErrorResponse } from "./responses.ts";
 import { ConfigurationError, createAdminClient } from "./runtime.ts";
@@ -48,6 +48,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     const admin = createAdminClient(getEnv);
     const result = intakeRequest.action === "create"
       ? await handleCreate(intakeRequest, admin, getEnv)
+      : intakeRequest.action === "event"
+      ? await handleEvent(intakeRequest, admin)
       : intakeRequest.action === "finalize"
       ? await handleFinalize(intakeRequest, admin)
       : await handleResume(intakeRequest, admin);

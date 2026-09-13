@@ -3,6 +3,10 @@ import type {
   AuthorizedProjectRequest,
   Branch,
   CreateRequest,
+  EventInput,
+  EventName,
+  EventRequest,
+  EventRoute,
   ExposureFactor,
   FileDeliveryMode,
   FileDescriptor,
@@ -23,6 +27,23 @@ const EXPOSURE_FACTORS = new Set<ExposureFactor>([
 
 const CREATE_KEYS = new Set(["action", "turnstileToken", "project", "files"]);
 const AUTHORIZED_KEYS = new Set(["action", "projectId", "submissionToken"]);
+const EVENT_REQUEST_KEYS = new Set(["action", "event"]);
+const EVENT_KEYS = new Set([
+  "event_name",
+  "session_id",
+  "branch",
+  "route",
+  "project_id",
+  "source",
+  "campaign",
+  "message_variant",
+]);
+const EVENT_NAMES = new Set<EventName>([
+  "quote_cta_clicked",
+  "form_started",
+  "form_submitted",
+]);
+const EVENT_ROUTES = new Set<EventRoute>(["/pecas", "/resina"]);
 const PROJECT_KEYS = new Set([
   "branch",
   "first_name",
@@ -286,11 +307,84 @@ function parseAuthorized(payload: Record<string, unknown>): AuthorizedProjectReq
   };
 }
 
+function parseEventAttribution(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length > 200) {
+    throw new ValidationError("INVALID_FIELD", `${fieldName} is invalid.`);
+  }
+  return value.trim() || undefined;
+}
+
+function parseEvent(payload: Record<string, unknown>): EventRequest {
+  assertExactKeys(payload, EVENT_REQUEST_KEYS, "payload");
+  const event = asRecord(payload.event, "event");
+  assertExactKeys(event, EVENT_KEYS, "event");
+
+  if (typeof event.event_name !== "string" || !EVENT_NAMES.has(event.event_name as EventName)) {
+    throw new ValidationError("INVALID_EVENT_NAME", "event_name is unsupported.");
+  }
+  const eventName = event.event_name as EventName;
+
+  const sessionId = requiredString(event.session_id, "session_id", 36);
+  if (!UUID_PATTERN.test(sessionId)) {
+    throw new ValidationError("INVALID_SESSION_ID", "session_id must be a UUID.");
+  }
+
+  if (event.branch !== "FDM" && event.branch !== "RESIN") {
+    throw new ValidationError("INVALID_BRANCH", "branch must be FDM or RESIN.");
+  }
+  if (typeof event.route !== "string" || !EVENT_ROUTES.has(event.route as EventRoute)) {
+    throw new ValidationError("INVALID_ROUTE", "route must be /pecas or /resina.");
+  }
+  if (
+    (event.branch === "FDM" && event.route !== "/pecas") ||
+    (event.branch === "RESIN" && event.route !== "/resina")
+  ) {
+    throw new ValidationError("BRANCH_ROUTE_MISMATCH", "branch and route do not match.");
+  }
+
+  let projectId: string | undefined;
+  if (eventName === "form_submitted") {
+    if (!Object.hasOwn(event, "project_id")) {
+      throw new ValidationError(
+        "PROJECT_ID_REQUIRED",
+        "project_id is required for form_submitted.",
+      );
+    }
+    projectId = requiredString(event.project_id, "project_id", 36);
+    if (!UUID_PATTERN.test(projectId)) {
+      throw new ValidationError("INVALID_PROJECT_ID", "project_id must be a UUID.");
+    }
+  } else if (Object.hasOwn(event, "project_id")) {
+    throw new ValidationError(
+      "PROJECT_ID_NOT_ALLOWED",
+      "project_id is not allowed for this event.",
+    );
+  }
+
+  const parsedEvent: EventInput = {
+    event_name: eventName,
+    session_id: sessionId,
+    branch: event.branch as Branch,
+    route: event.route as EventRoute,
+    ...(projectId ? { project_id: projectId } : {}),
+    source: parseEventAttribution(event.source, "source"),
+    campaign: parseEventAttribution(event.campaign, "campaign"),
+    message_variant: parseEventAttribution(event.message_variant, "message_variant"),
+  };
+
+  return { action: "event", event: parsedEvent };
+}
+
 export function parseIntakeRequest(value: unknown): IntakeRequest {
   const payload = asRecord(value, "payload");
   if (payload.action === "create") return parseCreate(payload);
+  if (payload.action === "event") return parseEvent(payload);
   if (payload.action === "finalize" || payload.action === "resume") {
     return parseAuthorized(payload);
   }
-  throw new ValidationError("INVALID_ACTION", "action must be create, finalize, or resume.");
+  throw new ValidationError(
+    "INVALID_ACTION",
+    "action must be create, event, finalize, or resume.",
+  );
 }

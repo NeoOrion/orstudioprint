@@ -1,6 +1,19 @@
 export type Branch = "FDM" | "RESIN";
 export type FileDeliveryMode = "UPLOAD" | "LINK";
 export type ExposureFactor = "HEAT" | "LOAD" | "OUTDOOR" | "IMPACT_FLEX" | "NONE" | "UNKNOWN";
+export type EventName = "quote_cta_clicked" | "form_started" | "form_submitted";
+export type EventRoute = "/pecas" | "/resina";
+
+export interface EventInput {
+  event_name: EventName;
+  session_id: string;
+  branch: Branch;
+  route: EventRoute;
+  project_id?: string;
+  source?: string;
+  campaign?: string;
+  message_variant?: string;
+}
 
 export interface ProjectInput {
   branch: Branch;
@@ -56,7 +69,12 @@ export interface AuthorizedProjectRequest {
   submissionToken: string;
 }
 
-export type IntakeRequest = CreateRequest | AuthorizedProjectRequest;
+export interface EventRequest {
+  action: "event";
+  event: EventInput;
+}
+
+export type IntakeRequest = CreateRequest | AuthorizedProjectRequest | EventRequest;
 
 export interface UploadAuthorization {
   file_uuid: string;

@@ -58,6 +58,117 @@ function validCreate(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
+function validEvent(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    action: "event",
+    event: {
+      event_name: "quote_cta_clicked",
+      session_id: "11111111-1111-4111-8111-111111111111",
+      branch: "FDM",
+      route: "/pecas",
+      ...overrides,
+    },
+  };
+}
+
+Deno.test("accepts quote_cta_clicked without project_id", () => {
+  const parsed = parseIntakeRequest(validEvent());
+  assertEquals(parsed.action, "event");
+});
+
+Deno.test("accepts form_started without project_id", () => {
+  const parsed = parseIntakeRequest(validEvent({ event_name: "form_started" }));
+  assertEquals(parsed.action, "event");
+});
+
+Deno.test("accepts form_submitted with project_id", () => {
+  const parsed = parseIntakeRequest(validEvent({
+    event_name: "form_submitted",
+    project_id: "22222222-2222-4222-8222-222222222222",
+  }));
+  assertEquals(parsed.action, "event");
+});
+
+Deno.test("rejects unsupported event names", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ event_name: "page_viewed" })),
+    "INVALID_EVENT_NAME",
+  );
+});
+
+Deno.test("rejects invalid event session UUID", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ session_id: "not-a-uuid" })),
+    "INVALID_SESSION_ID",
+  );
+});
+
+Deno.test("rejects invalid event project UUID", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ event_name: "form_submitted", project_id: "bad" })),
+    "INVALID_PROJECT_ID",
+  );
+});
+
+Deno.test("requires project_id for form_submitted", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ event_name: "form_submitted" })),
+    "PROJECT_ID_REQUIRED",
+  );
+});
+
+Deno.test("rejects project_id for quote_cta_clicked", () => {
+  assertThrowsCode(
+    () =>
+      parseIntakeRequest(validEvent({
+        project_id: "22222222-2222-4222-8222-222222222222",
+      })),
+    "PROJECT_ID_NOT_ALLOWED",
+  );
+});
+
+Deno.test("rejects project_id for form_started", () => {
+  assertThrowsCode(
+    () =>
+      parseIntakeRequest(validEvent({
+        event_name: "form_started",
+        project_id: "22222222-2222-4222-8222-222222222222",
+      })),
+    "PROJECT_ID_NOT_ALLOWED",
+  );
+});
+
+Deno.test("rejects incoherent event branch and route pairs", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ branch: "FDM", route: "/resina" })),
+    "BRANCH_ROUTE_MISMATCH",
+  );
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ branch: "RESIN", route: "/pecas" })),
+    "BRANCH_ROUTE_MISMATCH",
+  );
+});
+
+Deno.test("rejects event attribution values over 200 characters", () => {
+  for (const field of ["source", "campaign", "message_variant"]) {
+    assertThrowsCode(
+      () => parseIntakeRequest(validEvent({ [field]: "x".repeat(201) })),
+      "INVALID_FIELD",
+    );
+  }
+});
+
+Deno.test("rejects unexpected event fields", () => {
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ email: "ada@example.com" })),
+    "UNEXPECTED_FIELD",
+  );
+  assertThrowsCode(
+    () => parseIntakeRequest(validEvent({ metadata: { referrer: "https://example.com" } })),
+    "UNEXPECTED_FIELD",
+  );
+});
+
 Deno.test("accepts every permitted extension", () => {
   for (const extension of ["stl", "3mf", "obj", "step", "stp"]) {
     validateFileDescriptors([{ original_name: `part.${extension}`, declared_size_bytes: 1 }]);

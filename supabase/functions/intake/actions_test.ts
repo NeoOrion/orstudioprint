@@ -1,14 +1,15 @@
-import { handleFinalize, handleResume } from "./actions.ts";
+import { handleEvent, handleFinalize, handleResume } from "./actions.ts";
 import { buildStoragePath } from "./file_policy.ts";
 import { HttpError } from "./responses.ts";
 import type { AdminClient } from "./runtime.ts";
 import { hashSubmissionToken } from "./token.ts";
-import type { AuthorizedProjectRequest, StorageManifestEntry } from "./types.ts";
+import type { AuthorizedProjectRequest, EventRequest, StorageManifestEntry } from "./types.ts";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const FILE_ONE_ID = "22222222-2222-4222-8222-222222222222";
 const FILE_TWO_ID = "33333333-3333-4333-8333-333333333333";
 const SUBMISSION_TOKEN = "client-held-submission-token";
+const SESSION_ID = "44444444-4444-4444-8444-444444444444";
 
 function assert(condition: unknown, message = "Assertion failed"): asserts condition {
   if (!condition) throw new Error(message);
@@ -217,6 +218,75 @@ async function context(
     request: { action: "finalize", projectId: PROJECT_ID, submissionToken: SUBMISSION_TOKEN },
   };
 }
+
+function eventRequest(overrides: Partial<EventRequest["event"]> = {}): EventRequest {
+  return {
+    action: "event",
+    event: {
+      event_name: "form_started",
+      session_id: SESSION_ID,
+      branch: "FDM",
+      route: "/pecas",
+      ...overrides,
+    },
+  };
+}
+
+function eventAdmin(
+  inserted: Record<string, unknown>[],
+  error: { code: string } | null = null,
+): AdminClient {
+  return {
+    from: (table: string) => {
+      assertEquals(table, "events");
+      return {
+        insert: (value: Record<string, unknown>) => {
+          inserted.push(value);
+          return Promise.resolve({ data: null, error });
+        },
+      };
+    },
+  } as unknown as AdminClient;
+}
+
+Deno.test("handleEvent inserts only approved fields", async () => {
+  const inserted: Record<string, unknown>[] = [];
+  await handleEvent(
+    eventRequest({
+      event_name: "form_submitted",
+      project_id: PROJECT_ID,
+      source: "landing",
+      campaign: "p4",
+      message_variant: "a",
+    }),
+    eventAdmin(inserted),
+  );
+  assertEquals(inserted, [{
+    event_name: "form_submitted",
+    session_id: SESSION_ID,
+    branch: "FDM",
+    route: "/pecas",
+    project_id: PROJECT_ID,
+    source: "landing",
+    campaign: "p4",
+    message_variant: "a",
+  }]);
+});
+
+Deno.test("handleEvent returns the minimal success response without Turnstile", async () => {
+  const inserted: Record<string, unknown>[] = [];
+  const result = await handleEvent(eventRequest(), eventAdmin(inserted));
+  assertEquals(result, { body: { accepted: true }, status: 201 });
+});
+
+Deno.test("handleEvent maps database failures to a generic service error", async () => {
+  const inserted: Record<string, unknown>[] = [];
+  await expectHttpError(
+    handleEvent(eventRequest(), eventAdmin(inserted, { code: "DATABASE_ERROR" })),
+    503,
+    "SERVICE_UNAVAILABLE",
+  );
+});
 
 Deno.test("A invalid submission token returns 401", async () => {
   const test = await context();
