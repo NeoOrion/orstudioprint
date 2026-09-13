@@ -2,23 +2,23 @@
 
 OrStudio Print is experimental infrastructure for validating a possible 3D
 printing service in Brazil. Git is the implementation source of truth and
-Supabase is the runtime. P2.3.6B adds a static technical intake harness for
-local validation; it is not the final commercial landing page.
+Supabase is the backend runtime. The current P2.8 baseline combines a static
+public Next.js frontend with a technical intake and analytics backend.
 
-## P2.3.6A architecture
+## Current Supabase backend
 
 - Supabase project ref: `oajqahzzfdjochasiltx`
 - Region: `sa-east-1` (São Paulo, Brazil)
 - Private Storage bucket: `quote-files`
-- Database: `public.projects`, protected by RLS with no direct access for
-  `anon` or `authenticated`
-- Public Edge Function: `intake`, with the `create`, `finalize`, and `resume`
-  actions
+- Database tables: `public.projects` and `public.events`
+- Public Edge Function: `intake`, ACTIVE v5, with the `create`, `event`,
+  `finalize`, and `resume` actions
 
-The function is public only in the sense that the future form will not require
+The function is public only in the sense that the public form does not require
 Supabase Auth. Authentication and authorization are action-specific:
 
 - `create`: server-side Cloudflare Turnstile validation
+- `event`: allowlisted diagnostic events without customer PII
 - `finalize` and `resume`: `projectId` plus a high-entropy `submissionToken`
 
 The raw submission token is returned only once by `create`. Only its SHA-256
@@ -99,15 +99,16 @@ FDM exposure factors are restricted at the public write boundary to `HEAT`,
 values are rejected. `NONE` and `UNKNOWN` are each exclusive and cannot be
 combined with any other factor.
 
-## P2.3.6B frontend
+## Static frontend
 
 The repository root is a Next.js App Router application with TypeScript, React,
 plain CSS, and `output: "export"`. It has no Route Handlers, Server Actions,
-SSR dependency, or production Node.js runtime. `/` is a minimal technical
-entry page and `/intake` hosts one reusable FDM/RESIN form.
+SSR dependency, or production Node.js runtime. The public acquisition routes
+are `/`, `/pecas`, and `/resina`. `/intake` is a technical/QA harness, not a
+public acquisition route.
 
 The browser calls the public `intake` Edge Function with typed
-`create`, `finalize`, and `resume` requests. Upload mode follows:
+`create`, `event`, `finalize`, and `resume` requests. Upload mode follows:
 
 ```text
 create -> signed upload -> finalize
@@ -117,17 +118,24 @@ Only `NEXT_PUBLIC_SUPABASE_URL` and
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` initialize the browser client, and
 that client is used exclusively for `uploadToSignedUrl` on `quote-files`.
 It does not perform normal table or Storage CRUD. The privileged key remains
-server-only inside the Edge Function.
+server-only inside the Edge Function. The frontend also requires
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` at build time.
 
-After `create`, upload credentials and the mapping
-`file_uuid <-> original_name <-> size` are stored in memory and in
-`sessionStorage` under `orstudio_intake_pending_v1`. Customer name, e-mail,
-project description, file content, signed upload URLs, and short-lived upload
-tokens are not stored there. After reload, the user must reselect files with
-the same names and sizes before `resume` can issue fresh authorizations.
+After `create`, recoverable upload state is stored for up to 24 hours in
+`localStorage` under `orstudio_intake_pending_v2`. It contains operational
+project identifiers, the submission token, expiry, and the mapping
+`file_uuid <-> original_name <-> size`. It does not store form PII fields such
+as name, email, city, or project description, nor file content, signed upload
+URLs, or short-lived upload tokens. Original filenames are part of the recovery
+mapping and must be treated as potentially identifying. After reload, the user
+reselects only missing files before `resume` issues fresh authorizations.
 Discarding a local session never deletes remote data.
 
-Turnstile uses Cloudflare''s explicit SPA rendering and resets after every
+Minimal first-touch analytics records only `quote_cta_clicked`, `form_started`,
+and `form_submitted`. Quoting and macroconversion remain manual. During this
+validation phase there are no payments, orders, or production reservations.
+
+Turnstile uses Cloudflare's explicit SPA rendering and resets after every
 attempted `create` request because tokens are single-use. For local testing,
 use the official always-pass sitekey `1x00000000000000000000AA`; never place
 the Turnstile secret in a `NEXT_PUBLIC_` variable.
@@ -148,12 +156,13 @@ Install the pinned frontend dependencies, copy `.env.example` to the ignored
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA`
 
 ```powershell
-npm install
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000/intake`. The production build is fully static and
-is emitted to `out/` by `npm run build`.
+Open `/`, `/pecas`, or `/resina` for the public flow. Use `/intake` only as the
+technical/QA harness. The production build is fully static and is emitted to
+`out/` by `npm run build`.
 
 Frontend verification:
 
@@ -193,12 +202,32 @@ passwords.
 
 ## Deployment status
 
-P2.3.6B prepares implementation for Clara QA. Any localhost smoke against the
-currently active remote Edge Function v3 is preliminary only and cannot qualify
-the backend contract changes in this branch. Applying remote migrations,
-deploying the Edge Function, deploying Cloudflare Pages, and merging the
-feature branch into `main` are explicitly outside this task.
+The target configuration is Cloudflare Pages Free with production branch
+`main`. Use the static Next.js export with `npx next build` or `npm run build`,
+and configure `out` as the output directory.
 
-Before P4, server-side `create` idempotency remains a required control.
-Automatic retention cleanup within 30 days, production Turnstile keys, and the
-final international-transfer check also remain open.
+Cloudflare Pages/frontend requires only these public build variables:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+
+Never place any of the following in Pages or frontend configuration:
+
+- `SUPABASE_SECRET_KEY`
+- `SUPABASE_SECRET_KEYS`
+- `TURNSTILE_SECRET_KEY`
+- database passwords
+- service-role or other secret keys
+
+Advanced server-side `create` idempotency is not a pending P4 requirement; it
+was deliberately deferred to avoid overengineering the validation experiment.
+Advanced retention automation also remains deferred, with manual operation
+retained for the small experiment.
+
+Before P4, the active production provider set must be checked for any applicable
+international data transfers, and the published privacy disclosure must reflect
+the actual configuration.
+
+This README is a technical handoff. Deployment, production Turnstile changes,
+and other remote configuration changes require a separate authorized step.
