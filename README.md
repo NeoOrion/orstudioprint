@@ -202,9 +202,10 @@ passwords.
 
 ## Deployment status
 
-The target configuration is Cloudflare Pages Free with production branch
-`main`. Use the static Next.js export with `npx next build` or `npm run build`,
-and configure `out` as the output directory.
+Production is deployed on Cloudflare Pages Free at
+[https://orstudioprint.pages.dev](https://orstudioprint.pages.dev) from the
+production branch `main`. It uses the static Next.js export with build command
+`npx next build` and output directory `out`.
 
 Cloudflare Pages/frontend requires only these public build variables:
 
@@ -229,5 +230,5 @@ Before P4, the active production provider set must be checked for any applicable
 international data transfers, and the published privacy disclosure must reflect
 the actual configuration.
 
-This README is a technical handoff. Deployment, production Turnstile changes,
-and other remote configuration changes require a separate authorized step.
+This README is a technical handoff. Future production configuration changes,
+including Turnstile changes, require a separate authorized step.
